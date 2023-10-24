@@ -5,6 +5,7 @@
  *      Author: Khaled Shehab
  */
 
+/* Includes */
 #include "../include/STD_Types.h"
 #include "../include/BIT_MATH.h"
 #include "../include/MRCC_Interface.h"
@@ -22,6 +23,7 @@
 #include "../include/Amr.h"
 #include "../include/Monir.h"
 
+/* Names display on Ledmatrix */
 u8 Name[3][69]={
 				{
 				0,0,0,0,0,0,0,124,
@@ -53,7 +55,10 @@ u8 Name[3][69]={
 				}
 			   };
 
+/* data from IR to switch */
 extern u8 data;
+
+/* Flags and counters */
 u8 LedMat_Count=2;
 u8 TFT_Count=0;
 u8 LocalCounter=0;
@@ -63,11 +68,13 @@ u8 k=0;
 u8 Flag=4;
 u32 Song_counter=0;
 
+/* RGB Animation */
 void Led_Animation(void)
 {
 	static u8 round=0;
 	if(round == 0)
 	{
+		/* On Green and Off other */
 		MGPIO_SetResetValue(PORTA,PIN8,OUTPUT_LOW);
 		MGPIO_SetResetValue(PORTA,PIN9,OUTPUT_HIGH);
 		MGPIO_SetResetValue(PORTA,PIN10,OUTPUT_LOW);
@@ -75,6 +82,7 @@ void Led_Animation(void)
 	}
 	else if(round == 1)
 	{
+		/* On Blue and Off other */
 		MGPIO_SetResetValue(PORTA,PIN8,OUTPUT_LOW);
 		MGPIO_SetResetValue(PORTA,PIN9,OUTPUT_LOW);
 		MGPIO_SetResetValue(PORTA,PIN10,OUTPUT_HIGH);
@@ -82,6 +90,7 @@ void Led_Animation(void)
 	}
 	else if(round == 2)
 	{
+		/* On Red and Off other */
 		MGPIO_SetResetValue(PORTA,PIN8,OUTPUT_HIGH);
 		MGPIO_SetResetValue(PORTA,PIN9,OUTPUT_LOW);
 		MGPIO_SetResetValue(PORTA,PIN10,OUTPUT_LOW);
@@ -90,12 +99,15 @@ void Led_Animation(void)
 
 }
 
+/* Systick interrupt after receiving IR signal */
 void ISR(void)
 {
+	/* Get info from IR signal */
 	HIR_voidStoreData();
 	switch(data)
 	{
-	case HIR_40_BUTTON: //Amr
+	//Amr Diab case
+	case HIR_40_BUTTON:
 		Flag=2;
 		TFT_Count =1;
 		LedMat_Count=0;
@@ -106,7 +118,8 @@ void ISR(void)
 		Song_counter=0;
 		HTFT_voidDisplay(image[TFT_Count]);
 		break;
-	case HIR_41_BUTTON: //Monir
+	//Monir	case
+	case HIR_41_BUTTON:
 		Flag=3;
 		TFT_Count =2;
 		LedMat_Count=1;
@@ -117,7 +130,8 @@ void ISR(void)
 		Song_counter=0;
 		HTFT_voidDisplay(image[TFT_Count]);
 		break;
-	case HIR_42_BUTTON: //OFF
+	//OFF case
+	case HIR_42_BUTTON:
 		Flag=0;
 		TFT_Count =0;
 		LedMat_Count=2;
@@ -133,6 +147,7 @@ void ISR(void)
 
 int main(void)
 {
+	/* Initializations */
 	MRCC_Init();
 	MSYSTICK_voidInit();
 
@@ -150,6 +165,7 @@ int main(void)
 	MGPIO_SetOutputPinMode(PORTA,PIN9,OUTPUT_PUSH_PULL,SPEED_MEDIUM);
 	MGPIO_SetMode(PORTA,PIN10,OUTPUT);
 	MGPIO_SetOutputPinMode(PORTA,PIN10,OUTPUT_PUSH_PULL,SPEED_MEDIUM);
+	/* RGB On Red As start point */
 	MGPIO_SetResetValue(PORTA,PIN8,OUTPUT_HIGH);
 
 	/* Pins for SPI */
@@ -165,17 +181,24 @@ int main(void)
 	MGPIO_SetAlternativeFuncPin(PORTA,PIN5,5);
 	MGPIO_SetAlternativeFuncPin(PORTA,PIN7,5);
 	/*****************************************/
-	/* External Interrupt */
+	/* External Interrupt For IR */
+	/* Interrupt pin initialize */
 	MGPIO_SetMode(PORTA,PIN0,INPUT);
 	MGPIO_SetInputPinMode(PORTA,PIN0,NO_PULL_UP_DOWN);
+
+	/* pass IR function to EXTI to calculate Elapsed Time to get data */
 	MEXTI_voidCallBack(HIR_voidRecieveFrame,EXTI_LIN0);
+
+	/* enable EXTI0 on PORT A --> Trigger on falling edge */
 	MNVIC_VoidEnableInterrupt(6);
 	MEXIT_voidInterruptSetport(EXTI_LIN0,EXTI_PORTA);
 	MEXTI_voidInterruptTrigger(EXTI_LIN0,EXTI_FALLING);
 	MEXTI_voidInterruptEnableDisable(EXTI_LIN0,EXTI_ENABLE);
 
+	/* pass IR function to Systick interrupt to calculate data comes from IR and switch for it */
 	MSYSTICK_voidCtrlIntState(SYSTICK_DISABLE);
 	MESYSTICK_voidCallBack(ISR);
+	/* Initializations */
 	MSPI1_voidInit();
 	HTFT_voidInit();
 	HSTP1_voidInit();
@@ -187,38 +210,59 @@ int main(void)
 	{
 		if(Flag == 2)
 		{
+			/* Amr Diab case */
+			/* loops to display artist name in a motion view on led matrix */
+			/* Also to send song samples to R2RDAC */
 			for(i=0;i<62;i++)
 			{
+				/* Make some animation of RGB led */
 				Led_Animation();
-				/**/
+
+				/* Send sample for Continuous sound */
 				HR2RDAC_voidSetDataOneTime(Amr[Song_counter]);
 				Song_counter++;
+				/* Check if Song finished to start from the beginning */
 				if(Song_counter == 41533)
 					Song_counter=0;
+
+				/* iterate 15 times as a delay for led matrix show (one move) */
 				for(j=0;j<15;j++)
+					/* iterate for 8 rows with 8 values for columns */
 					for (LocalCounter=0;LocalCounter<8;LocalCounter++)
 					{
+						/* Check flag every iteration to jump if another action comes */
 						if(Flag == 2)
 						{
+						/* Set LedMatrix Rows to Ones with Serial-To-parallel peripheral */
 						HSTP2_voidSendSynchronus(0);
-						/**/
+
+						/* Send sample for Continuous sound */
 						HR2RDAC_voidSetDataOneTime(Amr[Song_counter]);
 						Song_counter++;
+						/* Check if Song finished to start from the beginning */
 						if(Song_counter == 41533)
 							Song_counter=0;
+
+						/* Set LedMatrix Columns to value with Serial-To-parallel peripheral */
 						HSTP1_voidSendSynchronus(Name[LedMat_Count][LocalCounter+i]);
-						/**/
+
+						/* Send sample for Continuous sound */
 						HR2RDAC_voidSetDataOneTime(Amr[Song_counter]);
 						Song_counter++;
+						/* Check if Song finished to start from the beginning */
 						if(Song_counter == 41533)
 							Song_counter=0;
+
+						/* Set Specific Row to Zero to make leds on this row On */
 						HSTP2_voidSendSynchronus(1<<LocalCounter);
-						/**/
+
+						/* inner loop to send samples of song */
 						for(k=0;k<5;k++)
 						{
 						HR2RDAC_voidSetDataOneTime(Amr[Song_counter]);
 						Song_counter++;
 						MSYSTICK_voidDelayus(80);
+						/* Check if Song finished to start from the beginning */
 						if(Song_counter == 41533)
 							Song_counter=0;
 						}
@@ -228,38 +272,58 @@ int main(void)
 		}
 		else if(Flag == 3)
 		{
+			/* Mounir case */
+			/* loops to display artist name in a motion view on led matrix */
+			/* Also to send song samples to R2RDAC */
 			for(i=0;i<54;i++)
 			{
 				Led_Animation();
-				/**/
+
+				/* Send sample for Continuous sound */
 				HR2RDAC_voidSetDataOneTime(Monir[Song_counter]);
 				Song_counter++;
+				/* Check if Song finished to start from the beginning */
 				if(Song_counter == 41533)
 					Song_counter=0;
+
+				/* iterate 15 times as a delay for led matrix show (one move) */
 				for(j=0;j<15;j++)
+					/* iterate for 8 rows with 8 values for columns */
 					for (LocalCounter=0;LocalCounter<8;LocalCounter++)
 					{
+						/* Check flag every iteration to jump if another action comes */
 						if(Flag == 3)
 						{
+						/* Set LedMatrix Rows to Ones with Serial-To-parallel peripheral */
 						HSTP2_voidSendSynchronus(0);
-						/**/
+
+						/* Send sample for Continuous sound */
 						HR2RDAC_voidSetDataOneTime(Monir[Song_counter]);
 						Song_counter++;
+						/* Check if Song finished to start from the beginning */
 						if(Song_counter == 52309)
 							Song_counter=0;
+
+						/* Set LedMatrix Columns to value with Serial-To-parallel peripheral */
 						HSTP1_voidSendSynchronus(Name[LedMat_Count][LocalCounter+i]);
-						/**/
+
+						/* Send sample for Continuous sound */
 						HR2RDAC_voidSetDataOneTime(Monir[Song_counter]);
 						Song_counter++;
+						/* Check if Song finished to start from the beginning */
 						if(Song_counter == 52309)
 							Song_counter=0;
+
+						/* Set Specific Row to Zero to make leds on this row On */
 						HSTP2_voidSendSynchronus(1<<LocalCounter);
-						/**/
+
+						/* inner loop to send samples of song */
 						for(k=0;k<5;k++)
 						{
 						HR2RDAC_voidSetDataOneTime(Monir[Song_counter]);
 						Song_counter++;
 						MSYSTICK_voidDelayus(80);
+						/* Check if Song finished to start from the beginning */
 						if(Song_counter == 52309)
 							Song_counter=0;
 						}
@@ -269,17 +333,26 @@ int main(void)
 		}
 		else if(Flag == 0)
 		{
+			/* Off case */
+			/* Apply 3 Colors on RGB led to get white light */
 			MGPIO_SetResetValue(PORTA,PIN8,OUTPUT_HIGH);
 			MGPIO_SetResetValue(PORTA,PIN9,OUTPUT_HIGH);
 			MGPIO_SetResetValue(PORTA,PIN10,OUTPUT_HIGH);
+			/* loops to display OFF word in a motion view on led matrix */
 			for(i=0;i<30;i++)
+				/* iterate 40 times as a delay for led matrix show (one move) */
 				for(j=0;j<40;j++)
+					/* iterate for 8 rows with 8 values for columns */
 					for (LocalCounter=0;LocalCounter<8;LocalCounter++)
 					{
+						/* Check flag every iteration to jump if another action comes */
 						if(Flag == 0)
 						{
+						/* Set LedMatrix Rows to Ones with Serial-To-parallel peripheral */
 						HSTP2_voidSendSynchronus(0);
+						/* Set LedMatrix Columns to value with Serial-To-parallel peripheral */
 						HSTP1_voidSendSynchronus(Name[LedMat_Count][LocalCounter+i]);
+						/* Set Specific Row to Zero to make leds on this row On */
 						HSTP2_voidSendSynchronus(1<<LocalCounter);
 						MSYSTICK_voidDelayus(100);
 						}
@@ -288,6 +361,9 @@ int main(void)
 		}
 		else if(Flag == 1)
 		{
+			/* After off case */
+			/* apply some animation on RGB led */
+			/* change RGB color every 1 second */
 			Led_Animation();
 			MSYSTICK_voidDelayms(1000);
 		}
